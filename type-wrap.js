@@ -1,6 +1,6 @@
 var _t = (function() {
     
-    // primitives
+    // primitive type checkers
     var primitives = {
         int: function(x) {
             if (typeof x !== "number") return false;
@@ -26,19 +26,39 @@ var _t = (function() {
         primitives[key]._type = key;
     }
 
-    // return the wrapper function
-    return function() {
+    // the main exported function. Builds a function type signature from the given type arguments
+    function typeSigBuilder() {
         var args = arguments,
             checkers = [];
 
-        // create the array of type checkers for arguments
-        for (var i=0; i<args.length; i++) {
-            checkers.push(getTypeChecker(args[i]));
+        if (!typeSigBuilder.disabled) {
+            // create the array of type checkers for arguments
+            for (var i=0; i<args.length; i++) {
+                checkers.push(getTypeChecker(args[i]));
+            }
         }
         
         // return the functions type signature wrapper
         return typeSigWrapper(checkers);
+    }
+
+    // returns a type model for the given object
+    typeSigBuilder.o = function(value) {
+        if (typeof value !== "object") {
+            throw TypeError('Argument must be of type Object. ' + getCallerLine());
+        }
+
+        if (!value.constructor) {
+            throw TypeError('Object does not have a constructor. ' + getCallerLine());
+        }
+
+        return new ObjectType(value.constructor);
     };
+
+    // allows for disabling type checking
+    typeSigBuilder.disabled = false;
+
+    return typeSigBuilder;
     
     // get the type checker for a given Type
     function getTypeChecker(arg) {
@@ -58,7 +78,7 @@ var _t = (function() {
         // check if it's a type signature
         if (arg instanceof TypeSig) {
             function check(func) {
-            	  var typeSig = func._typeWrapper;
+            	var typeSig = func._typeWrapper;
                 
                 if (!(typeSig instanceof TypeSig)) {
                     return false;
@@ -68,6 +88,7 @@ var _t = (function() {
                     return false;
                 }
 
+                // check that argument types match
                 for (var i=0; i<arg.typeCheckers.length; i++) {
                     var checkerA = arg.typeCheckers[i],
                         checkerB = typeSig.typeCheckers[i];
@@ -76,15 +97,20 @@ var _t = (function() {
                         return false;
                     }
                     // recurse if checking a typeSig checker
-                    if (checkerA._type === 'typesig') {
+                    if (checkerA._type === 'TypeSig') {
                         if (!check(checkerA, checkerB)) return false;
                     }
                 }
 
+                // check that return types match
                 if (arg.returnTypeChecker) {
                     if (typeSig.returnTypeChecker === null) return false;
 
                     if (typeSig.returnTypeChecker._type !== arg.returnTypeChecker._type) return false;
+
+                    if (typeSig.returnTypeChecker._type === "TypeSig") {
+                        if (!check(typeSig.returnTypeChecker, arg.returnTypeChecker)) return false;
+                    }
                 } else if (typeSig.returnTypeChecker) return false;
 
                 return true;
@@ -94,10 +120,12 @@ var _t = (function() {
             return check
         }
 
+        // wrap array primitive
         if (arg instanceof Array) {
             return new ArrayType(arg[0]).typeChecker;
         }
 
+        // wrap constructor functions
         if (typeof arg === "function") {
             return new ObjectType(arg).typeChecker;
         }
@@ -114,7 +142,7 @@ var _t = (function() {
 
         // return the default checker if nothing matched
         function checker(x) { return arg === x }
-        checker._type = "(default)";
+        checker._type = arg.toString();
 
         return checker;
     }
@@ -152,7 +180,6 @@ var _t = (function() {
                 if (!itemTypeChecker(arr[i])) return false;
             }
             return true;
-            
         }
 
         this.typeChecker._type = 'array[' + itemTypeChecker._type + ']';
@@ -167,12 +194,17 @@ var _t = (function() {
             function wrapped() {
                 var args = arguments;
     
+                if (typeSigBuilder.disabled) {
+                    // don't perform any checks if disabled
+                    return func.apply(null, args);
+                }
+
                 // check if correct number of args was passed
                 if (args.length !== checkers.length) {
                     throw TypeError("Function called with the wrong number of arguments. " + getCallerLine());
                 }
     
-                // apply a checker to each argument
+                // apply checkers to arguments
                 for (var i=0; i<args.length; i++) {
                     if (!checkers[i](args[i])) {
                         throw TypeError("Invalid type passed for argument " + (i + 1) + ". " + getCallerLine());
@@ -188,7 +220,7 @@ var _t = (function() {
     
                 return result;
             }
-            
+
             wrapped._typeWrapper = wrapper;
             
             return wrapped;
@@ -212,6 +244,7 @@ var _t = (function() {
         return wrapper;
     }
 
+    // utility to get info about where an exception was thrown from.
     function getCallerLine() {
         return (new Error()).stack.split("\n")[2];
     }
