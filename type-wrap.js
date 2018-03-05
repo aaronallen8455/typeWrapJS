@@ -31,16 +31,6 @@ var _t = (function() {
         var args = arguments,
             checkers = [];
 
-        // if argument is an array or class constructor, return the type model.
-        if (args.length === 1) {
-            if (args[0] instanceof Array) {
-                return new ArrayType(args[0]);
-            }
-            if (typeof args[0] === 'function') {
-                return new ObjectType(args[0]);
-            }
-        }
-        
         // create the array of type checkers for arguments
         for (var i=0; i<args.length; i++) {
             checkers.push(getTypeChecker(args[i]));
@@ -59,7 +49,7 @@ var _t = (function() {
     
             // throw error if no match found
             if (check === undefined) {
-                throw EvalError("There is no primitive type matching '" + arg + "'.");
+                throw EvalError("There is no primitive type matching '" + arg + "'. " + getCallerLine());
             }
             
             return check;
@@ -177,16 +167,15 @@ var _t = (function() {
             function wrapped() {
                 var args = arguments;
     
-                var callerLine = (new Error()).stack.split("\n")[1];
                 // check if correct number of args was passed
                 if (args.length !== checkers.length) {
-                    throw TypeError("Function called with the wrong number of arguments. " + callerLine);
+                    throw TypeError("Function called with the wrong number of arguments. " + getCallerLine());
                 }
     
                 // apply a checker to each argument
                 for (var i=0; i<args.length; i++) {
                     if (!checkers[i](args[i])) {
-                        throw TypeError("Invalid type for argument " + (i + 1) + ". " + callerLine);
+                        throw TypeError("Invalid type passed for argument " + (i + 1) + ". " + getCallerLine());
                     }
                 }
     
@@ -194,7 +183,7 @@ var _t = (function() {
                 var result = func.apply(null, args);
     
                 if (wrapper.returnTypeChecker !== null && !wrapper.returnTypeChecker(result)) {
-                    throw TypeError("Function returned a different type than expected. " + callerLine);
+                    throw TypeError("Function returned a different type than expected. " + getCallerLine());
                 }
     
                 return result;
@@ -210,10 +199,8 @@ var _t = (function() {
 
         // function for setting the expected return type
         wrapper.ret = function(value) {
-            var callerLine = (new Error()).stack.split("\n")[1];
-
             if (wrapper.returnTypeChecker !== null) {
-                throw SyntaxError("Return value can only be set once. " + callerLine);
+                throw SyntaxError("Return value can only be set once. " + getCallerLine());
             }
             wrapper.returnTypeChecker = getTypeChecker(value);
             return wrapper;
@@ -223,5 +210,9 @@ var _t = (function() {
         Object.setPrototypeOf(wrapper, new TypeSig());
 
         return wrapper;
+    }
+
+    function getCallerLine() {
+        return (new Error()).stack.split("\n")[2];
     }
 })();
