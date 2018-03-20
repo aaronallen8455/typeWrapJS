@@ -84,39 +84,44 @@ var _t = (function() {
                     return false;
                 }
 
-                if (typeSig.typeCheckers.length !== arg.typeCheckers.length) {
-                    return false;
-                }
-
                 // check that argument types match
-                for (var i=0; i<arg.typeCheckers.length; i++) {
-                    var checkerA = arg.typeCheckers[i],
-                        checkerB = typeSig.typeCheckers[i];
-
-                    if (checkerA._type !== checkerB._type) {
+                function compareCheckers(typeA, typeB) {
+                    if (typeA.typeCheckers.length !== typeB.typeCheckers.length) {
                         return false;
                     }
-                    // recurse if checking a typeSig checker
-                    if (checkerA._type === 'TypeSig') {
-                        if (!check(checkerA, checkerB)) return false;
+                    
+                    for (var i=0; i<typeA.typeCheckers.length; i++) {
+                        var checkerA = typeA.typeCheckers[i],
+                            checkerB = typeB.typeCheckers[i];
+                            
+                        if (checkerA._type !== checkerB._type) {
+                            return false;
+                        }
+                        // recurse if checking a typeSig checker
+                        if (checkerA._type === 'TypeSig') {
+                            if (!compareCheckers(checkerA._boundTypeSig, checkerB._boundTypeSig)) return false;
+                        }
                     }
+                    // check that return types match
+                    if (typeA.returnTypeChecker) {
+                        if (typeB.returnTypeChecker === null) return false;
+    
+                        if (typeB.returnTypeChecker._type !== typeA.returnTypeChecker._type) return false;
+    
+                        if (typeB.returnTypeChecker._type === "TypeSig") {
+                            // recursively check the return types
+                            if (!compareCheckers(typeA.returnTypeChecker._boundTypeSig, typeB.returnTypeChecker._boundTypeSig)) return false;
+                        }
+                    } else if (typeB.returnTypeChecker) return false;
+    
+                    return true;
                 }
 
-                // check that return types match
-                if (arg.returnTypeChecker) {
-                    if (typeSig.returnTypeChecker === null) return false;
-
-                    if (typeSig.returnTypeChecker._type !== arg.returnTypeChecker._type) return false;
-
-                    if (typeSig.returnTypeChecker._type === "TypeSig") {
-                        if (!check(typeSig.returnTypeChecker, arg.returnTypeChecker)) return false;
-                    }
-                } else if (typeSig.returnTypeChecker) return false;
-
-                return true;
+                return compareCheckers(arg, typeSig);
             }
 
             check._type = "TypeSig";
+            check._boundTypeSig = arg; // keep a reference back to the TypeSig for recursive argument checking against another typeSig checker
             return check
         }
 
@@ -249,3 +254,8 @@ var _t = (function() {
         return (new Error()).stack.split("\n")[2];
     }
 })();
+
+// for use with nodeJS
+if (typeof module !== 'undefined') {
+    module.exports = _t;
+}
